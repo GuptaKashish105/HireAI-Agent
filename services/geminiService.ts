@@ -1,13 +1,11 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserProfile, Job, ApplicationPackage } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 /**
  * Analyzes resume content. 
  */
 export const analyzeResume = async (content: string, isPdf: boolean = false): Promise<UserProfile> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const parts: any[] = [
     { text: "Extract detailed professional information from the following resume. Be precise and literal." }
   ];
@@ -61,6 +59,7 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
  * Searches LinkedIn and other platforms for detailed job listings.
  */
 export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const prompt = `Act as a high-precision job sourcing agent specialized in the Indian job market. 
     Search extensively across LinkedIn India, Naukri.com, Indeed India, and major company career portals.
     Find 20+ currently open jobs that match this candidate's profile.
@@ -115,6 +114,7 @@ export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => 
  * Generates application materials and identifies missing info.
  */
 export const generateApplication = async (profile: UserProfile, job: Job): Promise<ApplicationPackage> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const prompt = `Generate a tailored application package for ${profile.name} for the role of ${job.title} at ${job.company}. 
     In addition, identify if there are any specific questions this company usually asks for this type of role that aren't in the profile (e.g. 'Years of experience with Kubernetes', 'Willingness to travel').
     
