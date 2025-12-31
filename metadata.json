@@ -1,0 +1,7 @@
+{
+  "name": "HireAI - Autonomous Job Agent",
+  "description": "An advanced AI-powered career assistant that analyzes your LinkedIn profile, finds matching jobs using Google Search grounding, and automates the preparation of tailored application materials.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
