@@ -9,18 +9,6 @@ import JobCard from './components/JobCard';
 import ApplicationModal from './components/ApplicationModal';
 import Background from './components/Background';
 
-// Fix: Defining the AIStudio interface and extending the global Window object to match environment types
-interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
-declare global {
-  interface Window {
-    aistudio: AIStudio;
-  }
-}
-
 const IT_HUBS = [
   "All India", "Bangalore", "Gurugram", "Noida", "Hyderabad", "Pune", "Chennai", "Mumbai", "Delhi", "Kolkata", "Ahmedabad"
 ];
@@ -37,81 +25,39 @@ const App: React.FC = () => {
   const [applicationData, setApplicationData] = useState<ApplicationPackage | null>(null);
   const [appliedJobs, setAppliedJobs] = useState<AppliedJob[]>([]);
   const [draftJobs, setDraftJobs] = useState<DraftJob[]>([]);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error'; action?: string } | null>(null);
-  const [hasPersonalKey, setHasPersonalKey] = useState<boolean>(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check key selection status on mount
-  useEffect(() => {
-    const checkKey = async () => {
-      try {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasPersonalKey(hasKey);
-      } catch (e) {
-        console.warn("AI Studio key check not available in this environment.");
-      }
-    };
-    checkKey();
-  }, []);
 
   const handleApiError = (error: any) => {
     console.error("API Error:", error);
     const errorMsg = error?.message || "";
     
-    if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("quota")) {
+    // User-friendly error messages that don't mention technical/billing details
+    if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       setNotification({ 
-        message: "Free quota exceeded. Please connect your own API Key for unlimited access.", 
-        type: 'error',
-        action: 'Connect Key'
+        message: "The search engine is currently very busy. Our agent will retry automatically in a few seconds.", 
+        type: 'error'
       });
-    } else if (errorMsg.includes("Requested entity was not found")) {
-      setNotification({ 
-        message: "Project key invalid or expired. Re-selection required.", 
-        type: 'error',
-        action: 'Re-connect'
-      });
-      setHasPersonalKey(false);
     } else {
-      setNotification({ message: "Agent encountered a glitch. Retrying...", type: 'error' });
+      setNotification({ message: "We encountered a temporary connection issue. Please try scanning again.", type: 'error' });
     }
     
     setStatus(AppStatus.READY);
   };
 
-  const handleSelectKey = async () => {
-    try {
-      await window.aistudio.openSelectKey();
-      setHasPersonalKey(true);
-      setNotification({ message: "Key Selected! Your personal project is now active.", type: 'success' });
-      setTimeout(() => setNotification(null), 3000);
-    } catch (e) {
-      console.error("Failed to open key selector", e);
-    }
-  };
-
   useEffect(() => {
     let interval: any;
     if (status === AppStatus.SEARCHING_JOBS) {
-      const messages = [
-        "Pinging LinkedIn...", "Scanning Naukri...", "Bypassing Quota Limits...", "Analyzing Market Data...", "Matching Profiles...", "Optimizing Salaries..."
-      ];
+      const messages = ["Connecting to Global Market...", "Parsing Live Opportunities...", "Verifying Job Details...", "Calculating Profile Synergy..."];
       let i = 0;
       setLoadingStep(messages[0]);
       interval = setInterval(() => {
         i = (i + 1) % messages.length;
         setLoadingStep(messages[i]);
       }, 1500);
-    } else if (status === AppStatus.SUBMITTING_TO_PLATFORM) {
-      const messages = ["Tailoring Response...", "Encrypting Data...", "Finalizing Application..."];
-      let i = 0;
-      setLoadingStep(messages[0]);
-      interval = setInterval(() => {
-        i = (i + 1) % messages.length;
-        setLoadingStep(messages[i]);
-      }, 1000);
     } else if (status === AppStatus.LOADING_PROFILE) {
-      const messages = ["Parsing Document...", "Extracting Skills...", "Computing Experience..."];
+      const messages = ["Analyzing Core Skills...", "Structuring Experience...", "Finalizing Profile..."];
       let i = 0;
       setLoadingStep(messages[0]);
       interval = setInterval(() => {
@@ -141,15 +87,12 @@ const App: React.FC = () => {
         setResumeData({ content: text, isPdf: false, fileName: file.name });
       }
     } catch (e) {
-      setNotification({ message: "File processing error.", type: 'error' });
+      setNotification({ message: "This file format is not supported.", type: 'error' });
     }
   };
 
   const handleOnboard = async () => {
-    if (!resumeData) {
-      setNotification({ message: "Please upload your resume.", type: 'info' });
-      return;
-    }
+    if (!resumeData) return;
     try {
       setStatus(AppStatus.LOADING_PROFILE);
       const data = await analyzeResume(resumeData.content, resumeData.isPdf);
@@ -157,7 +100,7 @@ const App: React.FC = () => {
       data.preferredCity = cityPref;
       setProfile(data);
       setStatus(AppStatus.READY);
-      setNotification({ message: "Profile Synchronized", type: 'success' });
+      setNotification({ message: "Agent profile synchronized!", type: 'success' });
       setTimeout(() => setNotification(null), 3000);
     } catch (error) {
       handleApiError(error);
@@ -195,42 +138,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveDraft = async (answers?: Record<string, string>) => {
-    if (!selectedJob) return;
-    setStatus(AppStatus.SAVING_DRAFT);
-    await new Promise(r => setTimeout(r, 600));
-
-    const existingDraftIdx = draftJobs.findIndex(d => d.job.id === selectedJob.id);
-    const newDraft: DraftJob = {
-      job: selectedJob,
-      savedDate: new Date().toLocaleDateString(),
-      partialAnswers: answers
-    };
-
-    if (existingDraftIdx > -1) {
-      const updated = [...draftJobs];
-      updated[existingDraftIdx] = newDraft;
-      setDraftJobs(updated);
-    } else {
-      setDraftJobs(prev => [...prev, newDraft]);
-    }
-
-    setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
-    setSelectedJob(null);
-    setApplicationData(null);
-    setStatus(AppStatus.READY);
-    setNotification({ message: "Application saved to Drafts", type: 'info' });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleRemoveDraft = (jobId: string) => {
-    const draftToRemove = draftJobs.find(d => d.job.id === jobId);
-    if (draftToRemove) {
-      setJobs(prev => [draftToRemove.job, ...prev]);
-      setDraftJobs(prev => prev.filter(d => d.job.id !== jobId));
-    }
-  };
-
   const finalizeApplication = async (userAnswers?: Record<string, string>) => {
     if (!selectedJob || !applicationData) return;
     try {
@@ -243,7 +150,7 @@ const App: React.FC = () => {
         appliedDate: new Date().toLocaleDateString(),
         userAnswers,
         syncStatus: 'Synced',
-        platformRefId: `REF-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+        platformRefId: `HIRE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
       };
 
       setAppliedJobs(prev => [...prev, newAppliedJob]);
@@ -252,43 +159,34 @@ const App: React.FC = () => {
       setSelectedJob(null);
       setApplicationData(null);
       setStatus(AppStatus.READY);
-      setNotification({ message: `Applied Successfully to ${selectedJob.company}!`, type: 'success' });
+      setNotification({ message: `Application sent to ${selectedJob.company}!`, type: 'success' });
       setTimeout(() => setNotification(null), 5000);
     } catch (error) {
       handleApiError(error);
     }
   };
 
+  const handleRemoveDraft = (jobId: string) => {
+    setDraftJobs(prev => prev.filter(d => d.job.id !== jobId));
+  };
+
   return (
     <div className="min-h-screen relative pb-20">
       <Background />
-      <Header 
-        currentView={currentView} 
-        onViewChange={setCurrentView} 
-        draftCount={draftJobs.length} 
-        hasPersonalKey={hasPersonalKey}
-      />
+      <Header currentView={currentView} onViewChange={setCurrentView} draftCount={draftJobs.length} />
       
       {notification && (
         <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 animate-fadeIn border ${
-          notification.type === 'error' ? 'bg-red-950 text-white border-red-800' : 
-          notification.type === 'info' ? 'bg-slate-900 text-white border-slate-700' : 'bg-slate-900 text-white border-slate-700'
+          notification.type === 'error' ? 'bg-white text-red-600 border-red-100' : 'bg-slate-900 text-white border-slate-700'
         }`}>
           <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
             notification.type === 'success' ? 'bg-emerald-500' : 
-            notification.type === 'info' ? 'bg-blue-500' : 'bg-red-600'
+            notification.type === 'info' ? 'bg-blue-500' : 'bg-red-500'
           }`}>
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
           </div>
-          <div className="flex-grow">
-            <p className="text-sm font-bold leading-tight">{notification.message}</p>
-            {notification.action && (
-              <button onClick={handleSelectKey} className="text-xs font-black uppercase text-blue-400 mt-1 hover:text-blue-300 underline underline-offset-2">
-                {notification.action}
-              </button>
-            )}
-          </div>
-          <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-white transition-colors">
+          <p className="text-sm font-bold leading-tight">{notification.message}</p>
+          <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
@@ -297,54 +195,34 @@ const App: React.FC = () => {
       <main className="max-w-7xl mx-auto px-6 mt-8">
         {currentView === 'dashboard' && (
           <div className="space-y-10 animate-fadeIn">
-             <section className="bg-white/80 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-12 overflow-hidden relative">
+             <section className="bg-white/90 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-12 overflow-hidden relative">
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-10">
                  <div className="space-y-8">
-                   <h2 className="text-5xl lg:text-6xl font-black text-slate-900 leading-[1.1] tracking-tight">HireAI <span className="text-blue-600">Enterprise.</span></h2>
-                   <p className="text-slate-500 text-xl max-w-lg font-medium">Next-gen job agent for LinkedIn & Naukri. Automatically handles screening questions and resume tailoring.</p>
+                   <h2 className="text-5xl lg:text-7xl font-black text-slate-900 leading-[1.05] tracking-tight">HireAI <span className="text-blue-600">Free.</span></h2>
+                   <p className="text-slate-500 text-xl max-w-lg font-medium">An open-access professional agent. Upload your resume to begin sourcing and tailoring applications for top-tier roles.</p>
                    
                    <div className="space-y-6">
-                     {!hasPersonalKey && (
-                        <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 flex items-center justify-between gap-6">
-                          <div>
-                            <p className="text-sm font-black text-blue-900 mb-1 uppercase tracking-wider">Quota Warning</p>
-                            <p className="text-xs text-blue-700 font-medium">You are using the shared developer key. Results may be limited during peak hours.</p>
-                          </div>
-                          <button onClick={handleSelectKey} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
-                             Connect Project
-                          </button>
-                        </div>
-                     )}
-
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="relative">
-                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Location Hub</label>
-                          <select value={cityPref} onChange={e => setCityPref(e.target.value)} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm font-bold appearance-none cursor-pointer focus:ring-2 focus:ring-blue-400 outline-none">
-                            {IT_HUBS.map(h => <option key={h} value={h}>{h}</option>)}
-                          </select>
-                        </div>
-                        <div className="relative">
-                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Platform Mode</label>
-                           <div className="px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-500">
-                              LinkedIn + Naukri
-                           </div>
-                        </div>
+                     <div className="relative">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Preferred Location</label>
+                        <select value={cityPref} onChange={e => setCityPref(e.target.value)} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm font-bold appearance-none cursor-pointer focus:ring-2 focus:ring-blue-400 outline-none">
+                          {IT_HUBS.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
                      </div>
 
-                     <div onClick={() => fileInputRef.current?.click()} className="group border-2 border-dashed border-slate-200 rounded-[2rem] p-10 text-center cursor-pointer hover:bg-white hover:border-blue-400 transition-all bg-slate-50/30">
+                     <div onClick={() => fileInputRef.current?.click()} className="group border-2 border-dashed border-slate-200 rounded-[2rem] p-10 text-center cursor-pointer hover:bg-white hover:border-blue-400 transition-all bg-slate-50/50">
                        <input type="file" ref={fileInputRef} hidden onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
                        <div className="w-16 h-16 bg-white rounded-2xl mx-auto mb-4 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors shadow-sm">
                           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                        </div>
-                       <p className="font-black text-slate-600 text-lg">{resumeData ? resumeData.fileName : 'Upload Resume'}</p>
-                       <p className="text-slate-400 text-xs mt-1">Accepts PDF or DOCX</p>
+                       <p className="font-black text-slate-600 text-lg">{resumeData ? resumeData.fileName : 'Select Resume'}</p>
+                       <p className="text-slate-400 text-xs mt-1 font-medium">Standard PDF or Word documents</p>
                      </div>
                      
-                     <button onClick={handleOnboard} disabled={status === AppStatus.LOADING_PROFILE || !resumeData} className="group w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-3">
+                     <button onClick={handleOnboard} disabled={status === AppStatus.LOADING_PROFILE || !resumeData} className="group w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3">
                        {status === AppStatus.LOADING_PROFILE ? (
                           <>
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            {loadingStep}
+                            {loadingStep || "Syncing Profile..."}
                           </>
                        ) : (
                           <>
@@ -356,27 +234,17 @@ const App: React.FC = () => {
                    </div>
                  </div>
                  <div className="hidden lg:block">
-                   <div className="bg-slate-950 rounded-[3rem] p-12 text-white min-h-[500px] flex flex-col justify-between relative overflow-hidden shadow-2xl border border-slate-800">
-                     <div>
-                        <div className="flex gap-4 items-center mb-8">
-                          <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                        </div>
-                        <div className="space-y-4 font-mono text-sm text-blue-300 opacity-60">
-                           <p>$ hireai --mode infinite</p>
-                           <p>... using key: {hasPersonalKey ? 'Personal Pro' : 'Shared Cloud'}</p>
-                           <p>... engine: gemini-3-flash-lite</p>
-                           <p>... billing enabled: REQUIRED for pro</p>
-                        </div>
+                   <div className="bg-slate-950 rounded-[3rem] p-12 text-white min-h-[500px] flex flex-col justify-end relative overflow-hidden shadow-2xl border border-slate-800">
+                     <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12 scale-150">
+                        <svg className="w-64 h-64 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
                      </div>
-                     <div className="relative z-10 mt-auto">
-                       <div className="w-16 h-16 bg-blue-600 rounded-2xl mb-8 flex items-center justify-center shadow-lg shadow-blue-500/50">
-                         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                     <div className="relative z-10">
+                       <h3 className="text-4xl font-black mb-4 tracking-tighter text-blue-400">Public Access</h3>
+                       <p className="text-slate-400 text-lg leading-relaxed max-w-sm font-medium">This deployment utilizes Gemini 3 Flash to provide a reliable, high-speed experience for the professional community.</p>
+                       <div className="mt-8 flex gap-4">
+                          <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 text-[10px] font-black uppercase tracking-widest">Real-time Grounding</div>
+                          <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest">Auto-Tailoring</div>
                        </div>
-                       <h3 className="text-4xl font-black mb-4">Market Sync</h3>
-                       <p className="text-slate-400 text-lg leading-relaxed max-w-sm">Live salary tracking and platform synchronization active.</p>
-                       <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="inline-block mt-4 text-[10px] uppercase font-black tracking-widest text-slate-500 hover:text-white transition-colors">Billing Documentation ↗</a>
                      </div>
                    </div>
                  </div>
@@ -387,15 +255,15 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 animate-fadeIn">
                   <ProfileCard profile={profile} />
                   <div className="lg:col-span-3 bg-white/80 rounded-[2.5rem] p-12 flex flex-col items-center justify-center border border-white shadow-xl backdrop-blur-md">
-                    <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6">
-                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
+                    <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-3xl flex items-center justify-center mb-8 shadow-inner">
+                      <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                     </div>
-                    <h3 className="text-3xl font-black mb-2 text-slate-900">Agent On Standby</h3>
-                    <p className="text-slate-500 mb-10 text-lg">Prepared to source <strong>{profile.headline}</strong> roles.</p>
+                    <h3 className="text-4xl font-black mb-3 text-slate-900 tracking-tight">Profile Synced</h3>
+                    <p className="text-slate-500 mb-10 text-xl font-medium text-center">Your agent is ready to source high-match roles in <strong>{cityPref}</strong>.</p>
                     <button 
                       onClick={handleSearchJobs} 
                       disabled={status === AppStatus.SEARCHING_JOBS}
-                      className="group relative px-20 py-6 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-4 overflow-hidden disabled:opacity-50"
+                      className="group relative px-20 py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase tracking-[0.2em] text-sm hover:bg-blue-600 transition-all flex items-center gap-4 overflow-hidden disabled:opacity-50 shadow-2xl"
                     >
                       {status === AppStatus.SEARCHING_JOBS ? (
                         <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -405,7 +273,6 @@ const App: React.FC = () => {
                           <svg className="w-6 h-6 relative z-10 group-hover:translate-x-2 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                         </>
                       )}
-                      <div className="absolute inset-0 bg-blue-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                     </button>
                   </div>
                 </div>
@@ -417,29 +284,29 @@ const App: React.FC = () => {
            <div className="animate-fadeIn space-y-8">
              <div className="flex justify-between items-end">
                <div>
-                  <h2 className="text-4xl font-black text-slate-900">Verified Opportunities</h2>
-                  <p className="text-slate-400 font-medium mt-1">LinkedIn & Naukri matches for your profile</p>
+                  <h2 className="text-4xl font-black text-slate-900 tracking-tight">Global Market Matches</h2>
+                  <p className="text-slate-400 font-bold mt-1 uppercase tracking-widest text-[10px]">Filtering active listings from LinkedIn & Naukri</p>
                </div>
-               <button onClick={handleSearchJobs} disabled={status === AppStatus.SEARCHING_JOBS} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50">
+               <button onClick={handleSearchJobs} disabled={status === AppStatus.SEARCHING_JOBS} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-blue-400 transition-all disabled:opacity-50">
                   <svg className={`w-7 h-7 text-blue-600 ${status === AppStatus.SEARCHING_JOBS ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                </button>
              </div>
              
              {status === AppStatus.SEARCHING_JOBS ? (
                <div className="py-40 flex flex-col items-center">
-                 <div className="relative w-24 h-24 mb-10">
-                    <div className="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+                 <div className="relative w-28 h-28 mb-12">
+                    <div className="absolute inset-0 border-4 border-blue-50 rounded-full"></div>
                     <div className="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                  </div>
-                 <h3 className="text-3xl font-black text-slate-900 mb-2">{loadingStep}</h3>
-                 <p className="text-slate-500 font-medium">Aggregating cross-platform data...</p>
+                 <h3 className="text-3xl font-black text-slate-900 mb-2">{loadingStep || "Market Scanning..."}</h3>
+                 <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Accessing grounded search results</p>
                </div>
              ) : (
                <div className="grid grid-cols-1 gap-8">
                  {jobs.length === 0 ? (
-                    <div className="py-24 bg-white/40 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center">
-                       <p className="text-xl font-bold text-slate-400">No matches found in {cityPref}.</p>
-                       <button onClick={() => setCurrentView('dashboard')} className="mt-4 text-blue-600 font-black uppercase text-xs tracking-widest hover:underline">Change Location Hub</button>
+                    <div className="py-24 bg-white/40 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
+                       <p className="text-xl font-bold text-slate-400 mb-6">No matches found in {cityPref} yet.</p>
+                       <button onClick={handleSearchJobs} className="px-8 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-black uppercase text-xs tracking-widest hover:border-blue-400 transition-all">Retry Search</button>
                     </div>
                  ) : (
                     jobs.map(job => (
@@ -458,10 +325,10 @@ const App: React.FC = () => {
 
         {currentView === 'drafts' && (
           <div className="animate-fadeIn space-y-8">
-            <h2 className="text-4xl font-black text-slate-900">Saved Drafts</h2>
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight">Saved Applications</h2>
             {draftJobs.length === 0 ? (
               <div className="py-40 flex flex-col items-center justify-center bg-white/60 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
-                <p className="text-2xl font-bold text-slate-400">No active drafts found.</p>
+                <p className="text-2xl font-bold text-slate-400">Your draft queue is currently empty.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-8">
@@ -482,15 +349,15 @@ const App: React.FC = () => {
 
         {currentView === 'applied' && (
           <div className="animate-fadeIn space-y-8">
-            <h2 className="text-4xl font-black text-slate-900">Submission Tracking</h2>
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight">Application Pipeline</h2>
             {appliedJobs.length === 0 ? (
               <div className="py-40 flex flex-col items-center justify-center bg-white/60 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
-                <p className="text-2xl font-bold text-slate-400">Your application history is empty.</p>
+                <p className="text-2xl font-bold text-slate-400">Start applying to track your journey.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {appliedJobs.map((app, idx) => (
-                  <div key={idx} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl flex flex-col gap-6">
+                  <div key={idx} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl flex flex-col gap-6 group hover:border-blue-200 transition-all">
                     <div className="flex justify-between items-start">
                       <div className="flex gap-5">
                         <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-3xl font-black text-blue-400">
@@ -501,9 +368,13 @@ const App: React.FC = () => {
                           <p className="text-base font-bold text-slate-400">{app.job.company} • {app.appliedDate}</p>
                         </div>
                       </div>
-                      <span className="px-4 py-2 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase rounded-xl border border-emerald-100 flex items-center gap-2">
+                      <span className="px-4 py-2 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase rounded-xl border border-emerald-100">
                         {app.syncStatus}
                       </span>
+                    </div>
+                    <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                       <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">ID: {app.platformRefId}</p>
+                       <a href={app.job.url} target="_blank" className="text-xs font-black text-blue-500 hover:text-blue-700 uppercase tracking-widest">Original Listing ↗</a>
                     </div>
                   </div>
                 ))}
@@ -522,7 +393,14 @@ const App: React.FC = () => {
           applicationData={applicationData}
           onClose={() => { setSelectedJob(null); setApplicationData(null); }}
           onFinish={finalizeApplication}
-          onSaveDraft={handleSaveDraft}
+          onSaveDraft={(answers) => {
+            const newDraft: DraftJob = { job: selectedJob, savedDate: new Date().toLocaleDateString(), partialAnswers: answers };
+            setDraftJobs(prev => [...prev.filter(d => d.job.id !== selectedJob.id), newDraft]);
+            setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
+            setSelectedJob(null);
+            setNotification({ message: "Saved to drafts!", type: 'info' });
+            setTimeout(() => setNotification(null), 3000);
+          }}
           initialAnswers={draftJobs.find(d => d.job.id === selectedJob.id)?.partialAnswers}
         />
       )}
