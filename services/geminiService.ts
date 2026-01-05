@@ -4,16 +4,24 @@ import { UserProfile, Job, ApplicationPackage } from "../types";
 
 /**
  * Utility to execute Gemini calls with exponential backoff for 429 errors.
+ * Improved with more retries and jitter for free-tier resilience.
  */
-async function executeWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+async function executeWithRetry<T>(fn: () => Promise<T>, retries = 5, delay = 3000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
-    const isRateLimit = error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
+    const errorMsg = error?.message || "";
+    const isRateLimit = errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("quota");
+    
     if (isRateLimit && retries > 0) {
-      console.warn(`Rate limit hit. Retrying in ${delay}ms... (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return executeWithRetry(fn, retries - 1, delay * 2);
+      // Add jitter to delay (±500ms)
+      const jitter = Math.random() * 1000 - 500;
+      const actualDelay = delay + jitter;
+      
+      console.warn(`Quota reached. Cooling down for ${Math.round(actualDelay)}ms... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, actualDelay));
+      // Increase backoff multiplier to 2.5x for free tier
+      return executeWithRetry(fn, retries - 1, delay * 2.5);
     }
     throw error;
   }
@@ -76,9 +84,7 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
 };
 
 /**
- * High-speed job sourcing using Gemini-3-Flash-Preview.
- * Fixed: Replaced incorrect 'gemini-3-flash-lite-latest' with 'gemini-3-flash-preview' 
- * to resolve 404 'Requested entity was not found' error.
+ * High-speed job sourcing using Gemini-3-Flash-Preview with Search Grounding.
  */
 export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -86,7 +92,7 @@ export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => 
   const exp = profile.totalYearsOfExperience || 0;
 
   return executeWithRetry(async () => {
-    // Stage 1: Search discovery using the robust gemini-3-flash-preview model
+    // Stage 1: Search discovery
     const searchResult = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Find 10 active job listings for "${profile.headline}" in ${city} from LinkedIn and Naukri. Focus on roles requiring ~${exp} years experience. Return descriptive snippets and official job URLs.`,

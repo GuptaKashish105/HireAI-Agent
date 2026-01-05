@@ -15,130 +15,112 @@ const JobCard: React.FC<JobCardProps> = ({ job, onApply, isApplied, onNotInteres
   const skills = job.skillsRequired || [];
 
   return (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-8 transition-all hover:border-blue-400 hover:shadow-2xl group relative overflow-hidden">
-      {/* Platform Badge */}
-      <div className="absolute top-8 right-8 flex flex-col items-end gap-2">
-         <span className={`text-[10px] font-black px-3 py-1.5 rounded-xl border uppercase tracking-widest ${
-           job.platform?.toLowerCase().includes('linkedin') 
-           ? 'bg-blue-50 text-blue-600 border-blue-100' 
-           : 'bg-orange-50 text-orange-600 border-orange-100'
-         }`}>
-           via {job.platform || 'LinkedIn'}
-         </span>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
-        {/* Company Avatar */}
-        <div className="w-20 h-20 bg-slate-50 rounded-[1.5rem] flex items-center justify-center flex-shrink-0 text-slate-400 border border-slate-100 group-hover:bg-blue-50 transition-colors shadow-inner">
-           <span className="text-4xl font-black group-hover:text-blue-500 transition-colors">{job.company?.[0] || 'J'}</span>
-        </div>
-
-        <div className="flex-grow space-y-4">
-          <div>
-            <h4 className="text-2xl font-black text-slate-900 leading-tight mb-1 group-hover:text-blue-600 transition-colors">{job.title}</h4>
-            <div className="flex flex-wrap items-center gap-y-2 gap-x-6">
-              <span className="text-base font-bold text-slate-600 flex items-center gap-2">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1"/></svg>
-                 {job.company}
-              </span>
-              <span className="text-base font-bold text-slate-500 flex items-center gap-2">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                 {job.location}
-              </span>
-              <span className="text-base font-black text-emerald-600 bg-emerald-50 px-4 py-1.5 rounded-full border border-emerald-100 flex items-center gap-2 shadow-sm">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                 {job.salary || 'Competitive Pay'}
-              </span>
-              <span className="text-base font-bold text-indigo-600 flex items-center gap-2">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                 {job.experienceRequired || 'All levels'}
-              </span>
-            </div>
+    <div className="bg-white rounded-[3rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-2 transition-all hover:shadow-[0_40px_80px_rgba(0,0,0,0.08)] group animate-fadeIn mb-6 lg:mb-8">
+      <div className="p-6 md:p-10">
+        <div className="flex flex-col lg:flex-row gap-8 lg:gap-10 items-start relative">
+          {/* Avatar Section */}
+          <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center flex-shrink-0 text-slate-300 border border-slate-100 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all duration-500 shadow-inner">
+             <span className="text-4xl font-black">{job.company?.[0] || 'J'}</span>
           </div>
 
-          <p className="text-slate-500 text-sm leading-relaxed line-clamp-2 italic">
-            {job.description}
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            {skills.slice(0, 5).map((skill, i) => (
-              <span key={i} className="px-3 py-1.5 bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-wider border border-slate-200">
-                {skill}
-              </span>
-            ))}
-            {skills.length > 5 && (
-              <span className="px-3 py-1.5 bg-slate-50 text-slate-400 rounded-xl text-[11px] font-black uppercase border border-slate-200">
-                +{skills.length - 5} More
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="w-full lg:w-48 flex flex-col items-center lg:items-end gap-6 pt-4 lg:pt-0">
-          <div className="flex flex-col items-center lg:items-end">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Profile Fit</div>
-            <div className="flex items-center gap-3">
-              <div className="w-24 h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full transition-all duration-1000 ${score > 80 ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]' : 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]'}`}
-                  style={{ width: `${score}%` }}
-                ></div>
+          {/* Details Section */}
+          <div className="flex-grow space-y-5 lg:space-y-6">
+            <div className="space-y-2">
+              <h4 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter leading-tight group-hover:text-blue-600 transition-colors">
+                {job.title}
+              </h4>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <span className="text-base font-bold text-slate-400 flex items-center gap-2.5">
+                   <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                   {job.company}
+                </span>
+                <span className="text-base font-bold text-slate-400 flex items-center gap-2.5">
+                   <svg className="w-4 h-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                   {job.location}
+                </span>
+                <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 px-4 py-1.5 rounded-xl border border-emerald-100 shadow-sm">
+                   {job.salary || 'Market Rate'}
+                </span>
               </div>
-              <span className={`text-sm font-black ${score > 80 ? 'text-green-600' : 'text-yellow-600'}`}>
-                {score}%
-              </span>
+            </div>
+
+            <p className="text-slate-500 text-base md:text-lg leading-relaxed line-clamp-2 font-medium max-w-3xl">
+              {job.description}
+            </p>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {skills.slice(0, 7).map((skill, i) => (
+                <span key={i} className="px-4 py-1.5 bg-slate-50 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest border border-slate-200/60 group-hover:bg-white transition-colors">
+                  {skill}
+                </span>
+              ))}
             </div>
           </div>
 
-          <div className="flex flex-col w-full gap-3">
-            {/* Fix: Added direct link to job source URL to comply with grounding display rules */}
-            {job.url && (
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-4 rounded-2xl font-black text-xs text-center uppercase tracking-widest bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200 shadow-sm"
-              >
-                View Listing
-              </a>
-            )}
-            <button
-              onClick={onApply}
-              disabled={isApplied}
-              className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
-                isApplied 
-                ? 'bg-slate-100 text-slate-400 shadow-none pointer-events-none' 
-                : 'bg-blue-600 text-white hover:bg-slate-900 shadow-blue-100 hover:shadow-slate-200'
-              }`}
-            >
-              {isApplied ? 'Application Sent' : showDraftActions ? 'Resume Application' : 'Apply Now'}
-            </button>
-            
-            {showDraftActions && onNotInterested && (
+          {/* Action/Synergy Section */}
+          <div className="w-full lg:w-64 flex flex-col gap-6 lg:items-end self-stretch justify-between lg:pl-8 lg:border-l lg:border-slate-50">
+            <div className="flex flex-col items-center lg:items-end w-full space-y-3">
+              <div className="flex items-center gap-3 w-full justify-between lg:justify-end">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Synergy Match</span>
+                {job.platform && (
+                  <span className={`text-[8px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${
+                    job.platform.toLowerCase().includes('linkedin') 
+                    ? 'bg-blue-50 text-blue-600 border-blue-100' 
+                    : 'bg-orange-50 text-orange-600 border-orange-100'
+                  }`}>
+                    {job.platform}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4 w-full">
+                <div className="flex-grow h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                  <div 
+                    className="h-full bg-blue-600 rounded-full transition-all duration-1000 ease-out"
+                    style={{ width: `${score}%` }}
+                  ></div>
+                </div>
+                <span className="text-xl font-black text-slate-950 w-12 text-right tracking-tighter">{score}%</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 w-full">
               <button
-                onClick={onNotInterested}
-                className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-white text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all border border-slate-200"
+                onClick={onApply}
+                disabled={isApplied}
+                className={`w-full py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-xl active:scale-[0.97] ${
+                  isApplied 
+                  ? 'bg-slate-100 text-slate-400 shadow-none cursor-not-allowed' 
+                  : 'bg-blue-600 text-white hover:bg-slate-950 shadow-blue-100'
+                }`}
               >
-                Not Interested
+                {isApplied ? 'Applied' : showDraftActions ? 'Resume Draft' : 'Start Application'}
               </button>
-            )}
+              
+              {showDraftActions && onNotInterested && (
+                <button
+                  onClick={onNotInterested}
+                  className="w-full py-3.5 rounded-xl font-black text-[9px] uppercase tracking-widest bg-white text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all border border-slate-100"
+                >
+                  Archive Match
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {!showDraftActions && (
-        <div className="mt-8 flex items-center gap-5 bg-blue-50/50 rounded-2xl p-5 border border-blue-100 shadow-inner group-hover:bg-blue-50 transition-colors">
-          <div className="w-10 h-10 bg-white rounded-xl border border-blue-200 flex items-center justify-center text-blue-500 shadow-sm flex-shrink-0">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed font-medium">
-            <strong className="text-blue-700 font-black uppercase tracking-tighter mr-2">AI Reasoning:</strong>
-            {job.matchReason}
-          </p>
+      {/* Logic Footer */}
+      <div className="bg-slate-50/80 rounded-[2.5rem] m-2 p-5 lg:px-10 flex items-center gap-6 border border-slate-100/50 group-hover:bg-blue-50/30 transition-colors">
+        <div className="w-12 h-12 bg-white rounded-2xl border border-slate-100 flex items-center justify-center text-blue-600 shadow-sm flex-shrink-0 group-hover:scale-110 transition-all duration-500">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
         </div>
-      )}
+        <p className="text-sm md:text-base text-slate-600 font-medium leading-relaxed">
+          <span className="text-blue-700 font-black uppercase tracking-widest text-[9px] mr-3">AI Scouting Logic</span>
+          {job.matchReason}
+        </p>
+      </div>
     </div>
   );
 };
