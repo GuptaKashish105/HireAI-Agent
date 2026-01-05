@@ -22,6 +22,7 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
     parts.push({ text: `RESUME CONTENT:\n${content}` });
   }
 
+  // Use gemini-3-flash-preview for general text extraction and reasoning
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: { parts },
@@ -58,34 +59,34 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
 };
 
 /**
- * Fast job sourcing strictly for LinkedIn and Naukri with salary estimation.
+ * High-speed job sourcing using search grounding for real-time market data.
  */
 export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const city = profile.preferredCity || "India";
   const exp = profile.totalYearsOfExperience || 0;
 
-  // Phase 1: High-speed targeted search
+  // Phase 1: Search using gemini-3-flash-preview with search grounding
   const searchResult = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Find 8 active jobs for "${profile.headline}" in ${city}.
-    STRICT PLATFORM FILTER: ONLY search LinkedIn (site:linkedin.com/jobs) and Naukri (site:naukri.com). EXCLUDE Indeed and others.
-    STRICT EXP FILTER: Target exactly ${exp} years.
-    MANDATORY SALARY: Extract or ESTIMATE a realistic salary in INR (e.g. ₹15L - ₹25L PA). DO NOT return "Not Disclosed".`,
+    contents: `Find 10 active job listings for "${profile.headline}" in ${city} for LinkedIn and Naukri. Focus on roles requiring approx ${exp} years experience. Return descriptive snippets and listing URLs.`,
     config: { 
       tools: [{ googleSearch: {} }] 
     }
   });
 
   const rawText = searchResult.text;
+  // Extracting grounding metadata to ensure URLs are captured as per grounding display requirements
+  const groundingChunks = searchResult.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  const sourceContext = JSON.stringify(groundingChunks);
 
-  // Phase 2: Instant JSON Formatting (No reasoning to reduce latency)
+  // Phase 2: Structuring JSON and verified URL extraction
   const structuredResult = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Convert to JSON array. Ensure 'salary' is ALWAYS a specific INR range (e.g. ₹12L - ₹18L PA).
-    Data: ${rawText}`,
+    contents: `Convert the following job data into a structured JSON array. Ensure 'salary' is in INR. MatchScore should be 0.9-1.0 if highly relevant.
+    Raw Data: ${rawText}
+    Verified Grounding Sources: ${sourceContext}`,
     config: {
-      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
@@ -98,7 +99,7 @@ export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => 
             location: { type: Type.STRING },
             platform: { type: Type.STRING },
             description: { type: Type.STRING },
-            url: { type: Type.STRING },
+            url: { type: Type.STRING, description: 'The direct source URL from the grounding sources.' },
             matchScore: { type: Type.NUMBER },
             matchReason: { type: Type.STRING },
             responsibilities: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -116,20 +117,20 @@ export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => 
   const jobs = JSON.parse(structuredResult.text || '[]') as Job[];
   return jobs.map(j => ({
     ...j,
-    id: j.id || Math.random().toString(36).substr(2, 9)
+    id: j.id || Math.random().toString(36).substr(2, 9),
+    matchScore: j.matchScore ? (j.matchScore > 1 ? j.matchScore : j.matchScore * 100) : 85
   }));
 };
 
 /**
- * Generates application materials.
+ * Generates tailored application materials using gemini-3-flash-preview.
  */
 export const generateApplication = async (profile: UserProfile, job: Job): Promise<ApplicationPackage> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Tailor application for ${job.title} at ${job.company} for ${profile.name}.`,
+    contents: `Draft a high-conversion application for ${job.title} at ${job.company} for ${profile.name}. Include resume tailoring tips and identify 3 screening questions the recruiter might ask based on this JD.`,
     config: {
-      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -142,7 +143,8 @@ export const generateApplication = async (profile: UserProfile, job: Job): Promi
             properties: { why_us: { type: Type.STRING }, relevant_experience: { type: Type.STRING } }
           },
           requiredAdditionalInfo: { type: Type.ARRAY, items: { type: Type.STRING } }
-        }
+        },
+        required: ["coverLetter", "resumeTailoringTips", "requiredAdditionalInfo"]
       }
     }
   });

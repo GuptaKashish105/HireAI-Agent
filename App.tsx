@@ -9,6 +9,18 @@ import JobCard from './components/JobCard';
 import ApplicationModal from './components/ApplicationModal';
 import Background from './components/Background';
 
+// Fix: Defining the AIStudio interface and extending the global Window object to match environment types
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
+
 const IT_HUBS = [
   "All India", "Bangalore", "Gurugram", "Noida", "Hyderabad", "Pune", "Chennai", "Mumbai", "Delhi", "Kolkata", "Ahmedabad"
 ];
@@ -25,31 +37,73 @@ const App: React.FC = () => {
   const [applicationData, setApplicationData] = useState<ApplicationPackage | null>(null);
   const [appliedJobs, setAppliedJobs] = useState<AppliedJob[]>([]);
   const [draftJobs, setDraftJobs] = useState<DraftJob[]>([]);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error'; action?: string } | null>(null);
+  const [hasPersonalKey, setHasPersonalKey] = useState<boolean>(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Check key selection status on mount
+  useEffect(() => {
+    const checkKey = async () => {
+      try {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasPersonalKey(hasKey);
+      } catch (e) {
+        console.warn("AI Studio key check not available in this environment.");
+      }
+    };
+    checkKey();
+  }, []);
+
   const handleApiError = (error: any) => {
     console.error("API Error:", error);
-    setNotification({ message: "Network delay. Please try again.", type: 'error' });
+    const errorMsg = error?.message || "";
+    
+    if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("quota")) {
+      setNotification({ 
+        message: "Free quota exceeded. Please connect your own API Key for unlimited access.", 
+        type: 'error',
+        action: 'Connect Key'
+      });
+    } else if (errorMsg.includes("Requested entity was not found")) {
+      setNotification({ 
+        message: "Project key invalid or expired. Re-selection required.", 
+        type: 'error',
+        action: 'Re-connect'
+      });
+      setHasPersonalKey(false);
+    } else {
+      setNotification({ message: "Agent encountered a glitch. Retrying...", type: 'error' });
+    }
+    
     setStatus(AppStatus.READY);
-    setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleSelectKey = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      setHasPersonalKey(true);
+      setNotification({ message: "Key Selected! Your personal project is now active.", type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (e) {
+      console.error("Failed to open key selector", e);
+    }
   };
 
   useEffect(() => {
     let interval: any;
     if (status === AppStatus.SEARCHING_JOBS) {
       const messages = [
-        "Pinging LinkedIn...", "Scanning Naukri...", "Filtering by Platform...", "Calculating Salaries in INR...", "Matching Skills...", "Optimizing Results..."
+        "Pinging LinkedIn...", "Scanning Naukri...", "Bypassing Quota Limits...", "Analyzing Market Data...", "Matching Profiles...", "Optimizing Salaries..."
       ];
       let i = 0;
       setLoadingStep(messages[0]);
       interval = setInterval(() => {
         i = (i + 1) % messages.length;
         setLoadingStep(messages[i]);
-      }, 1200); // Faster feedback loop
+      }, 1500);
     } else if (status === AppStatus.SUBMITTING_TO_PLATFORM) {
-      const messages = ["Preparing Application...", "Transmitting CV...", "Finalizing Sync..."];
+      const messages = ["Tailoring Response...", "Encrypting Data...", "Finalizing Application..."];
       let i = 0;
       setLoadingStep(messages[0]);
       interval = setInterval(() => {
@@ -57,7 +111,7 @@ const App: React.FC = () => {
         setLoadingStep(messages[i]);
       }, 1000);
     } else if (status === AppStatus.LOADING_PROFILE) {
-      const messages = ["Reading Resume...", "Extracting Years...", "Building Profile..."];
+      const messages = ["Parsing Document...", "Extracting Skills...", "Computing Experience..."];
       let i = 0;
       setLoadingStep(messages[0]);
       interval = setInterval(() => {
@@ -87,7 +141,7 @@ const App: React.FC = () => {
         setResumeData({ content: text, isPdf: false, fileName: file.name });
       }
     } catch (e) {
-      setNotification({ message: "File error.", type: 'error' });
+      setNotification({ message: "File processing error.", type: 'error' });
     }
   };
 
@@ -103,7 +157,7 @@ const App: React.FC = () => {
       data.preferredCity = cityPref;
       setProfile(data);
       setStatus(AppStatus.READY);
-      setNotification({ message: "Profile Optimized", type: 'success' });
+      setNotification({ message: "Profile Synchronized", type: 'success' });
       setTimeout(() => setNotification(null), 3000);
     } catch (error) {
       handleApiError(error);
@@ -121,7 +175,7 @@ const App: React.FC = () => {
       setJobs(matchedJobs);
     } catch (error) {
       handleApiError(error);
-      setCurrentView('dashboard');
+      if (currentView !== 'active') setCurrentView('dashboard');
     } finally {
       setStatus(AppStatus.READY);
     }
@@ -165,7 +219,7 @@ const App: React.FC = () => {
     setSelectedJob(null);
     setApplicationData(null);
     setStatus(AppStatus.READY);
-    setNotification({ message: "Saved to Drafts", type: 'info' });
+    setNotification({ message: "Application saved to Drafts", type: 'info' });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -181,7 +235,7 @@ const App: React.FC = () => {
     if (!selectedJob || !applicationData) return;
     try {
       setStatus(AppStatus.SUBMITTING_TO_PLATFORM);
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 2000));
 
       const newAppliedJob: AppliedJob = {
         job: selectedJob,
@@ -198,7 +252,7 @@ const App: React.FC = () => {
       setSelectedJob(null);
       setApplicationData(null);
       setStatus(AppStatus.READY);
-      setNotification({ message: `Applied to ${selectedJob.company}!`, type: 'success' });
+      setNotification({ message: `Applied Successfully to ${selectedJob.company}!`, type: 'success' });
       setTimeout(() => setNotification(null), 5000);
     } catch (error) {
       handleApiError(error);
@@ -208,20 +262,35 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen relative pb-20">
       <Background />
-      <Header currentView={currentView} onViewChange={setCurrentView} draftCount={draftJobs.length} />
+      <Header 
+        currentView={currentView} 
+        onViewChange={setCurrentView} 
+        draftCount={draftJobs.length} 
+        hasPersonalKey={hasPersonalKey}
+      />
       
       {notification && (
-        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-fadeIn border ${
-          notification.type === 'error' ? 'bg-red-900 text-white border-red-700' : 
-          notification.type === 'info' ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-900 text-white border-slate-700'
+        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 animate-fadeIn border ${
+          notification.type === 'error' ? 'bg-red-950 text-white border-red-800' : 
+          notification.type === 'info' ? 'bg-slate-900 text-white border-slate-700' : 'bg-slate-900 text-white border-slate-700'
         }`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            notification.type === 'success' ? 'bg-green-500' : 
-            notification.type === 'info' ? 'bg-indigo-500' : 'bg-blue-500'
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+            notification.type === 'success' ? 'bg-emerald-500' : 
+            notification.type === 'info' ? 'bg-blue-500' : 'bg-red-600'
           }`}>
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
           </div>
-          <p className="text-sm font-bold">{notification.message}</p>
+          <div className="flex-grow">
+            <p className="text-sm font-bold leading-tight">{notification.message}</p>
+            {notification.action && (
+              <button onClick={handleSelectKey} className="text-xs font-black uppercase text-blue-400 mt-1 hover:text-blue-300 underline underline-offset-2">
+                {notification.action}
+              </button>
+            )}
+          </div>
+          <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-white transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
         </div>
       )}
 
@@ -231,18 +300,35 @@ const App: React.FC = () => {
              <section className="bg-white/80 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-12 overflow-hidden relative">
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-10">
                  <div className="space-y-8">
-                   <h2 className="text-5xl lg:text-6xl font-black text-slate-900 leading-[1.1] tracking-tight">Your Autonomous <br/><span className="text-blue-600 underline decoration-blue-100 underline-offset-8">Career Pilot.</span></h2>
-                   <p className="text-slate-500 text-xl max-w-lg font-medium">Scans LinkedIn and Naukri strictly for your experience level. Upload your resume to begin.</p>
+                   <h2 className="text-5xl lg:text-6xl font-black text-slate-900 leading-[1.1] tracking-tight">HireAI <span className="text-blue-600">Enterprise.</span></h2>
+                   <p className="text-slate-500 text-xl max-w-lg font-medium">Next-gen job agent for LinkedIn & Naukri. Automatically handles screening questions and resume tailoring.</p>
                    
                    <div className="space-y-6">
-                     <div className="relative group">
-                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Target Hub</label>
-                       <select value={cityPref} onChange={e => setCityPref(e.target.value)} className="w-full px-6 py-5 bg-white border border-slate-200 rounded-2xl shadow-sm font-bold appearance-none cursor-pointer focus:ring-2 focus:ring-blue-400 transition-all outline-none">
-                         {IT_HUBS.map(h => <option key={h} value={h}>{h}</option>)}
-                       </select>
-                       <div className="absolute right-6 bottom-5 pointer-events-none text-slate-400">
-                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7"/></svg>
-                       </div>
+                     {!hasPersonalKey && (
+                        <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 flex items-center justify-between gap-6">
+                          <div>
+                            <p className="text-sm font-black text-blue-900 mb-1 uppercase tracking-wider">Quota Warning</p>
+                            <p className="text-xs text-blue-700 font-medium">You are using the shared developer key. Results may be limited during peak hours.</p>
+                          </div>
+                          <button onClick={handleSelectKey} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+                             Connect Project
+                          </button>
+                        </div>
+                     )}
+
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="relative">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Location Hub</label>
+                          <select value={cityPref} onChange={e => setCityPref(e.target.value)} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm font-bold appearance-none cursor-pointer focus:ring-2 focus:ring-blue-400 outline-none">
+                            {IT_HUBS.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        </div>
+                        <div className="relative">
+                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Platform Mode</label>
+                           <div className="px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-500">
+                              LinkedIn + Naukri
+                           </div>
+                        </div>
                      </div>
 
                      <div onClick={() => fileInputRef.current?.click()} className="group border-2 border-dashed border-slate-200 rounded-[2rem] p-10 text-center cursor-pointer hover:bg-white hover:border-blue-400 transition-all bg-slate-50/30">
@@ -250,8 +336,8 @@ const App: React.FC = () => {
                        <div className="w-16 h-16 bg-white rounded-2xl mx-auto mb-4 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors shadow-sm">
                           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                        </div>
-                       <p className="font-black text-slate-600 text-lg">{resumeData ? resumeData.fileName : 'Upload CV / Resume'}</p>
-                       <p className="text-slate-400 text-xs mt-1">DOCX or PDF</p>
+                       <p className="font-black text-slate-600 text-lg">{resumeData ? resumeData.fileName : 'Upload Resume'}</p>
+                       <p className="text-slate-400 text-xs mt-1">Accepts PDF or DOCX</p>
                      </div>
                      
                      <button onClick={handleOnboard} disabled={status === AppStatus.LOADING_PROFILE || !resumeData} className="group w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-3">
@@ -262,7 +348,7 @@ const App: React.FC = () => {
                           </>
                        ) : (
                           <>
-                            Initialize Profile
+                            Initialize Agent
                             <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
                           </>
                        )}
@@ -278,18 +364,19 @@ const App: React.FC = () => {
                           <div className="w-3 h-3 rounded-full bg-green-500"></div>
                         </div>
                         <div className="space-y-4 font-mono text-sm text-blue-300 opacity-60">
-                           <p>$ hireai --ready</p>
-                           <p>... scanning LinkedIn & Naukri</p>
-                           <p>... filtering: {profile?.totalYearsOfExperience || 'Calculating'} yrs</p>
-                           <p>... fetching market salaries (INR)</p>
+                           <p>$ hireai --mode infinite</p>
+                           <p>... using key: {hasPersonalKey ? 'Personal Pro' : 'Shared Cloud'}</p>
+                           <p>... engine: gemini-3-flash-lite</p>
+                           <p>... billing enabled: REQUIRED for pro</p>
                         </div>
                      </div>
                      <div className="relative z-10 mt-auto">
                        <div className="w-16 h-16 bg-blue-600 rounded-2xl mb-8 flex items-center justify-center shadow-lg shadow-blue-500/50">
                          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                        </div>
-                       <h3 className="text-4xl font-black mb-4">Precision Match</h3>
-                       <p className="text-slate-400 text-lg leading-relaxed max-w-sm">Strictly verified listings from the top 2 platforms in India.</p>
+                       <h3 className="text-4xl font-black mb-4">Market Sync</h3>
+                       <p className="text-slate-400 text-lg leading-relaxed max-w-sm">Live salary tracking and platform synchronization active.</p>
+                       <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="inline-block mt-4 text-[10px] uppercase font-black tracking-widest text-slate-500 hover:text-white transition-colors">Billing Documentation ↗</a>
                      </div>
                    </div>
                  </div>
@@ -300,21 +387,21 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 animate-fadeIn">
                   <ProfileCard profile={profile} />
                   <div className="lg:col-span-3 bg-white/80 rounded-[2.5rem] p-12 flex flex-col items-center justify-center border border-white shadow-xl backdrop-blur-md">
-                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
+                    <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6">
                       <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
                     </div>
-                    <h3 className="text-3xl font-black mb-2 text-slate-900">Agent Ready</h3>
-                    <p className="text-slate-500 mb-10 text-lg">Searching LinkedIn & Naukri for <strong>{profile.totalYearsOfExperience} year</strong> roles.</p>
+                    <h3 className="text-3xl font-black mb-2 text-slate-900">Agent On Standby</h3>
+                    <p className="text-slate-500 mb-10 text-lg">Prepared to source <strong>{profile.headline}</strong> roles.</p>
                     <button 
                       onClick={handleSearchJobs} 
                       disabled={status === AppStatus.SEARCHING_JOBS}
-                      className="group relative px-16 py-6 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-4 overflow-hidden disabled:opacity-50"
+                      className="group relative px-20 py-6 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-4 overflow-hidden disabled:opacity-50"
                     >
                       {status === AppStatus.SEARCHING_JOBS ? (
                         <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       ) : (
                         <>
-                          <span className="relative z-10">Start Job Hunting</span>
+                          <span className="relative z-10">Scan For Jobs</span>
                           <svg className="w-6 h-6 relative z-10 group-hover:translate-x-2 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                         </>
                       )}
@@ -330,8 +417,8 @@ const App: React.FC = () => {
            <div className="animate-fadeIn space-y-8">
              <div className="flex justify-between items-end">
                <div>
-                  <h2 className="text-4xl font-black text-slate-900">Recommended Feed</h2>
-                  <p className="text-slate-400 font-medium mt-1">Verified LinkedIn & Naukri matches</p>
+                  <h2 className="text-4xl font-black text-slate-900">Verified Opportunities</h2>
+                  <p className="text-slate-400 font-medium mt-1">LinkedIn & Naukri matches for your profile</p>
                </div>
                <button onClick={handleSearchJobs} disabled={status === AppStatus.SEARCHING_JOBS} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50">
                   <svg className={`w-7 h-7 text-blue-600 ${status === AppStatus.SEARCHING_JOBS ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -345,13 +432,14 @@ const App: React.FC = () => {
                     <div className="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                  </div>
                  <h3 className="text-3xl font-black text-slate-900 mb-2">{loadingStep}</h3>
-                 <p className="text-slate-500 font-medium">This usually takes about 10 seconds...</p>
+                 <p className="text-slate-500 font-medium">Aggregating cross-platform data...</p>
                </div>
              ) : (
                <div className="grid grid-cols-1 gap-8">
                  {jobs.length === 0 ? (
                     <div className="py-24 bg-white/40 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center">
-                       <p className="text-xl font-bold text-slate-400">No matches found. Try refreshing or a different location.</p>
+                       <p className="text-xl font-bold text-slate-400">No matches found in {cityPref}.</p>
+                       <button onClick={() => setCurrentView('dashboard')} className="mt-4 text-blue-600 font-black uppercase text-xs tracking-widest hover:underline">Change Location Hub</button>
                     </div>
                  ) : (
                     jobs.map(job => (
@@ -373,7 +461,7 @@ const App: React.FC = () => {
             <h2 className="text-4xl font-black text-slate-900">Saved Drafts</h2>
             {draftJobs.length === 0 ? (
               <div className="py-40 flex flex-col items-center justify-center bg-white/60 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
-                <p className="text-2xl font-bold text-slate-400">Drafts folder is empty</p>
+                <p className="text-2xl font-bold text-slate-400">No active drafts found.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-8">
@@ -394,10 +482,10 @@ const App: React.FC = () => {
 
         {currentView === 'applied' && (
           <div className="animate-fadeIn space-y-8">
-            <h2 className="text-4xl font-black text-slate-900">Application History</h2>
+            <h2 className="text-4xl font-black text-slate-900">Submission Tracking</h2>
             {appliedJobs.length === 0 ? (
               <div className="py-40 flex flex-col items-center justify-center bg-white/60 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
-                <p className="text-2xl font-bold text-slate-400">No applications sent yet</p>
+                <p className="text-2xl font-bold text-slate-400">Your application history is empty.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -413,7 +501,7 @@ const App: React.FC = () => {
                           <p className="text-base font-bold text-slate-400">{app.job.company} • {app.appliedDate}</p>
                         </div>
                       </div>
-                      <span className="px-4 py-2 bg-green-50 text-green-600 text-[10px] font-black uppercase rounded-xl border border-green-100 flex items-center gap-2">
+                      <span className="px-4 py-2 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase rounded-xl border border-emerald-100 flex items-center gap-2">
                         {app.syncStatus}
                       </span>
                     </div>

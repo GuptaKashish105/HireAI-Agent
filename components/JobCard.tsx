@@ -91,6 +91,17 @@ const JobCard: React.FC<JobCardProps> = ({ job, onApply, isApplied, onNotInteres
           </div>
 
           <div className="flex flex-col w-full gap-3">
+            {/* Fix: Added direct link to job source URL to comply with grounding display rules */}
+            {job.url && (
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-4 rounded-2xl font-black text-xs text-center uppercase tracking-widest bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200 shadow-sm"
+              >
+                View Listing
+              </a>
+            )}
             <button
               onClick={onApply}
               disabled={isApplied}
