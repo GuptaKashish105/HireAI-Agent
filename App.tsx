@@ -33,18 +33,14 @@ const App: React.FC = () => {
     console.error("API Error:", error);
     const errorMsg = error?.message || "";
     
+    // User-friendly error messages that don't mention technical/billing details
     if (errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
       setNotification({ 
-        message: "Search engine busy. Our agent is retrying to find the best roles for you...", 
-        type: 'info'
-      });
-    } else if (errorMsg.includes("404") || errorMsg.includes("not found")) {
-      setNotification({ 
-        message: "Service synchronization in progress. Retrying scan...", 
-        type: 'info'
+        message: "The search engine is currently very busy. Our agent will retry automatically in a few seconds.", 
+        type: 'error'
       });
     } else {
-      setNotification({ message: "Market scan interrupted. Please click search again.", type: 'error' });
+      setNotification({ message: "We encountered a temporary connection issue. Please try scanning again.", type: 'error' });
     }
     
     setStatus(AppStatus.READY);
@@ -120,7 +116,6 @@ const App: React.FC = () => {
     try {
       const matchedJobs = await findMatchingJobs(profile);
       setJobs(matchedJobs);
-      setNotification(null);
     } catch (error) {
       handleApiError(error);
       if (currentView !== 'active') setCurrentView('dashboard');
@@ -188,13 +183,9 @@ const App: React.FC = () => {
             notification.type === 'success' ? 'bg-emerald-500' : 
             notification.type === 'info' ? 'bg-blue-500' : 'bg-red-500'
           }`}>
-            {notification.type === 'info' ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
-            )}
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
           </div>
-          <p className="text-sm font-bold leading-tight max-w-sm">{notification.message}</p>
+          <p className="text-sm font-bold leading-tight">{notification.message}</p>
           <button onClick={() => setNotification(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
