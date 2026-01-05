@@ -1,7 +1,22 @@
-
 # ⚡ HireAI Open: The Autonomous Career Scout
 
 **HireAI Open** is a sophisticated, AI-driven professional agent designed to eliminate the exhausting manual labor of job hunting. By combining the reasoning power of **Gemini 3 Flash** with real-time **Google Search Grounding**, HireAI Open doesn't just search for jobs—it scouts the market like a dedicated career agent.
+
+🔗 Live Demo:
+👉 [Launch HireAI Open – Gemini Free Tier](https://aistudio.google.com/apps/drive/1efERimQd4CmiA_qJUhuOKqCXRy8B-ATN?showAssistant=true&showPreview=true&fullscreenApplet=true)
+
+
+⚠️ **Important Note**
+- Runs on **Google Gemini Free Tier**
+- During peak usage, **Search Grounding may hit rate limits**
+- The agent **automatically retries** when limits are reached
+- For uninterrupted usage, run locally with your own Gemini API key
+
+### 🎯 What You Can Try in the Live Demo
+- Upload and analyze resumes
+- Trigger real-time job scouting
+- View AI-generated match scores and reasoning
+- Experience the full autonomous workflow of HireAI Open
 
 ---
 
