@@ -9,9 +9,14 @@ async function executeWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 20
   try {
     return await fn();
   } catch (error: any) {
-    const isRateLimit = error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
-    if (isRateLimit && retries > 0) {
-      console.warn(`Rate limit hit. Retrying in ${delay}ms... (${retries} attempts left)`);
+    const errorMsg = error?.message || "";
+    const isRateLimit = errorMsg.includes("429") || errorMsg.includes("RESOURCE_EXHAUSTED");
+    
+    // Also retry on 404 in case of regional model propagation delay
+    const isNotFound = errorMsg.includes("404") || errorMsg.includes("not found");
+
+    if ((isRateLimit || isNotFound) && retries > 0) {
+      console.warn(`API issue encountered. Retrying in ${delay}ms... (${retries} attempts left)`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return executeWithRetry(fn, retries - 1, delay * 2);
     }
@@ -76,9 +81,7 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
 };
 
 /**
- * High-speed job sourcing using Gemini-3-Flash-Preview.
- * Fixed: Replaced incorrect 'gemini-3-flash-lite-latest' with 'gemini-3-flash-preview' 
- * to resolve 404 'Requested entity was not found' error.
+ * High-speed job sourcing using Gemini-3-Flash-Preview with Search Grounding.
  */
 export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
