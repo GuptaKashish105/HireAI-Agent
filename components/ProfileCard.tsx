@@ -22,14 +22,19 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
         <div className="mt-4">
           <h3 className="text-xl font-bold text-slate-900">{profile.name}</h3>
           <p className="text-sm text-slate-600 font-medium leading-tight mt-1">{profile.headline}</p>
+          {profile.totalYearsOfExperience !== undefined && (
+             <span className="inline-block mt-2 px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-lg border border-blue-100">
+               {profile.totalYearsOfExperience} Years Experience
+             </span>
+          )}
         </div>
 
         <div className="mt-6 space-y-4">
           <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Key Skills</h4>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Technical Core</h4>
             <div className="flex flex-wrap gap-2">
               {profile.skills.map((skill, i) => (
-                <span key={i} className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium">
+                <span key={i} className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium border border-slate-200">
                   {skill}
                 </span>
               ))}
@@ -37,7 +42,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile }) => {
           </div>
 
           <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Latest Experience</h4>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Verified Experience</h4>
             {profile.experience.slice(0, 2).map((exp, i) => (
               <div key={i} className="mb-3 last:mb-0">
                 <p className="text-sm font-semibold text-slate-800">{exp.role}</p>

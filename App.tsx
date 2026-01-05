@@ -1,16 +1,22 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import mammoth from 'mammoth';
-import { UserProfile, Job, AppStatus, ApplicationPackage, View, AppliedJob } from './types';
+import { UserProfile, Job, AppStatus, ApplicationPackage, View, AppliedJob, DraftJob } from './types';
 import { findMatchingJobs, generateApplication, analyzeResume } from './services/geminiService';
 import Header from './components/Header';
 import ProfileCard from './components/ProfileCard';
 import JobCard from './components/JobCard';
 import ApplicationModal from './components/ApplicationModal';
+import Background from './components/Background';
+
+const IT_HUBS = [
+  "All India", "Bangalore", "Gurugram", "Noida", "Hyderabad", "Pune", "Chennai", "Mumbai", "Delhi", "Kolkata", "Ahmedabad"
+];
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [resumeData, setResumeData] = useState<{ content: string; isPdf: boolean; fileName: string } | null>(null);
+  const [cityPref, setCityPref] = useState<string>("All India");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
@@ -18,411 +24,418 @@ const App: React.FC = () => {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [applicationData, setApplicationData] = useState<ApplicationPackage | null>(null);
   const [appliedJobs, setAppliedJobs] = useState<AppliedJob[]>([]);
-  const [draftJobs, setDraftJobs] = useState<AppliedJob[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const [viewingPackage, setViewingPackage] = useState<AppliedJob | null>(null);
+  const [draftJobs, setDraftJobs] = useState<DraftJob[]>([]);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Rotating loading messages to improve perceived performance
+  const handleApiError = (error: any) => {
+    console.error("API Error:", error);
+    setNotification({ message: "Network delay. Please try again.", type: 'error' });
+    setStatus(AppStatus.READY);
+    setTimeout(() => setNotification(null), 5000);
+  };
+
   useEffect(() => {
     let interval: any;
     if (status === AppStatus.SEARCHING_JOBS) {
       const messages = [
-        "Scanning LinkedIn India...",
-        "Scraping Naukri & Indeed portals...",
-        "Identifying 20+ relevant leads...",
-        "Converting salary ranges to INR...",
-        "Matching skills with job descriptions...",
-        "Ranking by match percentage...",
-        "Filtering expired listings...",
-        "Finalizing your job feed..."
+        "Pinging LinkedIn...", "Scanning Naukri...", "Filtering by Platform...", "Calculating Salaries in INR...", "Matching Skills...", "Optimizing Results..."
       ];
       let i = 0;
       setLoadingStep(messages[0]);
       interval = setInterval(() => {
         i = (i + 1) % messages.length;
         setLoadingStep(messages[i]);
-      }, 3500);
+      }, 1200); // Faster feedback loop
+    } else if (status === AppStatus.SUBMITTING_TO_PLATFORM) {
+      const messages = ["Preparing Application...", "Transmitting CV...", "Finalizing Sync..."];
+      let i = 0;
+      setLoadingStep(messages[0]);
+      interval = setInterval(() => {
+        i = (i + 1) % messages.length;
+        setLoadingStep(messages[i]);
+      }, 1000);
+    } else if (status === AppStatus.LOADING_PROFILE) {
+      const messages = ["Reading Resume...", "Extracting Years...", "Building Profile..."];
+      let i = 0;
+      setLoadingStep(messages[0]);
+      interval = setInterval(() => {
+        i = (i + 1) % messages.length;
+        setLoadingStep(messages[i]);
+      }, 1000);
     }
     return () => clearInterval(interval);
   }, [status]);
 
   const processFile = async (file: File) => {
     const extension = file.name.split('.').pop()?.toLowerCase();
-    
-    if (extension === 'pdf') {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = (e.target?.result as string).split(',')[1];
-        setResumeData({ content: base64, isPdf: true, fileName: file.name });
-      };
-      reader.readAsDataURL(file);
-    } else if (extension === 'docx') {
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      setResumeData({ content: result.value, isPdf: false, fileName: file.name });
-    } else if (extension === 'txt' || extension === 'md') {
-      const text = await file.text();
-      setResumeData({ content: text, isPdf: false, fileName: file.name });
-    } else {
-      alert("Unsupported file format. Please use PDF, DOCX, TXT, or MD.");
+    try {
+      if (extension === 'pdf') {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const base64 = (e.target?.result as string).split(',')[1];
+          setResumeData({ content: base64, isPdf: true, fileName: file.name });
+        };
+        reader.readAsDataURL(file);
+      } else if (extension === 'docx') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setResumeData({ content: result.value, isPdf: false, fileName: file.name });
+      } else {
+        const text = await file.text();
+        setResumeData({ content: text, isPdf: false, fileName: file.name });
+      }
+    } catch (e) {
+      setNotification({ message: "File error.", type: 'error' });
     }
   };
 
   const handleOnboard = async () => {
     if (!resumeData) {
-      alert("Please upload a resume.");
+      setNotification({ message: "Please upload your resume.", type: 'info' });
       return;
     }
-
     try {
       setStatus(AppStatus.LOADING_PROFILE);
-      setLoadingStep('Extracting skills...');
       const data = await analyzeResume(resumeData.content, resumeData.isPdf);
-      data.url = 'Uploaded File';
+      data.url = resumeData.fileName;
+      data.preferredCity = cityPref;
       setProfile(data);
       setStatus(AppStatus.READY);
+      setNotification({ message: "Profile Optimized", type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
     } catch (error) {
-      console.error("Error onboarding profile:", error);
-      setStatus(AppStatus.IDLE);
-      alert("Analysis failed. Please try a different file format.");
-    } finally {
-      setLoadingStep('');
+      handleApiError(error);
     }
   };
 
   const handleSearchJobs = async () => {
     if (!profile) return;
+    setJobs([]);
+    setStatus(AppStatus.SEARCHING_JOBS);
+    setCurrentView('active');
+
     try {
-      setStatus(AppStatus.SEARCHING_JOBS);
-      // loadingStep is handled by the useEffect sequence now
-      setJobs([]); 
       const matchedJobs = await findMatchingJobs(profile);
       setJobs(matchedJobs);
-      setStatus(AppStatus.READY);
-      setCurrentView('active');
     } catch (error) {
-      console.error("Error searching jobs:", error);
-      setStatus(AppStatus.READY);
+      handleApiError(error);
+      setCurrentView('dashboard');
     } finally {
-      setLoadingStep('');
+      setStatus(AppStatus.READY);
     }
   };
 
   const startApplication = async (job: Job) => {
-    setSelectedJob(job);
-    setStatus(AppStatus.APPLYING);
+    if (!profile) return;
     try {
-      if (profile) {
-        const pkg = await generateApplication(profile, job);
-        setApplicationData(pkg);
-      }
-    } catch (error) {
-      console.error("Error generating application:", error);
-    } finally {
+      setStatus(AppStatus.APPLYING);
+      setSelectedJob(job);
+      const appPackage = await generateApplication(profile, job);
+      setApplicationData(appPackage);
       setStatus(AppStatus.READY);
+    } catch (error) {
+      handleApiError(error);
+      setSelectedJob(null);
     }
   };
 
-  const handleCloseModal = () => {
-    if (selectedJob && applicationData) {
-      const isAlreadyDraft = draftJobs.some(d => d.job.id === selectedJob.id);
-      if (!isAlreadyDraft) {
-        const draft: AppliedJob = {
-          job: selectedJob,
-          application: applicationData,
-          appliedDate: new Date().toLocaleDateString()
-        };
-        setDraftJobs(prev => [...prev, draft]);
-      }
-    }
-    setSelectedJob(null);
-    setApplicationData(null);
-    setViewingPackage(null);
-  };
+  const handleSaveDraft = async (answers?: Record<string, string>) => {
+    if (!selectedJob) return;
+    setStatus(AppStatus.SAVING_DRAFT);
+    await new Promise(r => setTimeout(r, 600));
 
-  const handleCancelDraft = (jobId: string) => {
-    setDraftJobs(prev => prev.filter(d => d.job.id !== jobId));
-  };
-
-  const finalizeApplication = (userAnswers?: Record<string, string>) => {
-    if (!selectedJob || !applicationData) return;
-    
-    const newAppliedJob: AppliedJob = {
+    const existingDraftIdx = draftJobs.findIndex(d => d.job.id === selectedJob.id);
+    const newDraft: DraftJob = {
       job: selectedJob,
-      application: applicationData,
-      appliedDate: new Date().toLocaleDateString(),
-      userAnswers: userAnswers
+      savedDate: new Date().toLocaleDateString(),
+      partialAnswers: answers
     };
 
-    setAppliedJobs(prev => [...prev, newAppliedJob]);
-    setDraftJobs(prev => prev.filter(d => d.job.id !== selectedJob.id));
-    
+    if (existingDraftIdx > -1) {
+      const updated = [...draftJobs];
+      updated[existingDraftIdx] = newDraft;
+      setDraftJobs(updated);
+    } else {
+      setDraftJobs(prev => [...prev, newDraft]);
+    }
+
+    setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
     setSelectedJob(null);
     setApplicationData(null);
+    setStatus(AppStatus.READY);
+    setNotification({ message: "Saved to Drafts", type: 'info' });
+    setTimeout(() => setNotification(null), 3000);
   };
 
-  const renderDashboard = () => (
-    <div className="space-y-6">
-      <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">Identity Center</h2>
-            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Upload Resume to Start</p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div 
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={async (e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if(f) await processFile(f); }}
-            onClick={() => fileInputRef.current?.click()}
-            className={`cursor-pointer border-2 border-dashed rounded-xl p-6 transition-all text-center ${
-              isDragging ? 'border-blue-500 bg-blue-50/20' : 'border-slate-50 hover:border-blue-100 bg-slate-50/30'
-            }`}
-          >
-            <input type="file" ref={fileInputRef} onChange={async (e) => { const f = e.target.files?.[0]; if(f) await processFile(f); }} className="hidden" accept=".pdf,.docx,.txt,.md" />
-            <div className="mb-2 flex justify-center">
-              <svg className={`w-6 h-6 ${isDragging ? 'text-blue-500' : 'text-slate-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-            </div>
-            <p className="text-xs font-bold text-slate-700">{resumeData ? resumeData.fileName : 'Drop resume here or click to upload'}</p>
-            <p className="text-[10px] text-slate-400 mt-1">Supports PDF, DOCX, TXT, MD</p>
-          </div>
-          
-          <button
-            onClick={handleOnboard}
-            disabled={status === AppStatus.LOADING_PROFILE || !resumeData}
-            className="w-full py-2.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all shadow-md shadow-blue-50 active:scale-[0.98]"
-          >
-            {status === AppStatus.LOADING_PROFILE ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                {loadingStep || 'Syncing...'}
-              </span>
-            ) : 'Activate Job Agent'}
-          </button>
-        </div>
-      </section>
-
-      {profile && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
-          <div className="lg:col-span-1">
-            <ProfileCard profile={profile} />
-          </div>
-          <div className="lg:col-span-2">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center h-full flex flex-col items-center justify-center">
-               <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-               </div>
-               <h3 className="text-xl font-bold text-slate-900">Agent Status: Ready</h3>
-               <p className="text-sm text-slate-400 mt-2 max-w-sm">Your professional profile is active. You can now start searching for matching roles across major Indian job boards.</p>
-               <button
-                  onClick={handleSearchJobs}
-                  disabled={status === AppStatus.SEARCHING_JOBS}
-                  className="mt-8 px-10 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-100 min-w-[240px]"
-                >
-                  {status === AppStatus.SEARCHING_JOBS ? (
-                    <div className="flex flex-col items-center">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Agent is sourcing...</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 animate-pulse font-normal lowercase">{loadingStep}</span>
-                    </div>
-                  ) : (
-                    <>
-                      <span>Begin Job Sourcing</span>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                      </svg>
-                    </>
-                  )}
-                </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderActiveSearch = () => {
-    const appliedIds = new Set(appliedJobs.map(a => a.job.id));
-    const draftIds = new Set(draftJobs.map(d => d.job.id));
-    const activeLeads = jobs.filter(j => !appliedIds.has(j.id) && !draftIds.has(j.id));
-
-    return (
-      <div className="space-y-6 animate-fadeIn">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Active Jobs ({activeLeads.length})</h2>
-            <p className="text-sm text-slate-500">Curated opportunities from LinkedIn, Naukri, and Indeed.</p>
-          </div>
-          <button 
-            onClick={handleSearchJobs}
-            disabled={status === AppStatus.SEARCHING_JOBS}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all flex items-center gap-2"
-          >
-            {status === AppStatus.SEARCHING_JOBS ? (
-              <>
-                 <div className="w-3 h-3 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin"></div>
-                 <span>Searching...</span>
-              </>
-            ) : 'Refresh Feed'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4">
-          {status === AppStatus.SEARCHING_JOBS && (
-            <div className="space-y-4">
-              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 text-center animate-pulse">
-                <p className="text-blue-700 font-bold text-sm">{loadingStep}</p>
-                <div className="w-full max-w-xs mx-auto mt-3 h-1 bg-blue-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 w-1/2 animate-progress"></div>
-                </div>
-              </div>
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-40 bg-white border border-slate-100 rounded-2xl overflow-hidden relative">
-                   <div className="absolute inset-0 bg-gradient-to-r from-slate-50 via-white to-slate-50 animate-progress"></div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {activeLeads.length === 0 && status !== AppStatus.SEARCHING_JOBS ? (
-            <div className="bg-white border border-slate-100 rounded-2xl p-20 text-center">
-              <div className="text-5xl mb-4 opacity-50">🔭</div>
-              <h3 className="text-lg font-bold text-slate-800">No active leads</h3>
-              <p className="text-sm text-slate-400 mt-2">Source jobs from the dashboard to populate your feed.</p>
-            </div>
-          ) : (
-            activeLeads.map(job => (
-              <JobCard 
-                key={job.id} 
-                job={job} 
-                onApply={() => startApplication(job)} 
-                isApplied={false}
-              />
-            ))
-          )}
-        </div>
-      </div>
-    );
+  const handleRemoveDraft = (jobId: string) => {
+    const draftToRemove = draftJobs.find(d => d.job.id === jobId);
+    if (draftToRemove) {
+      setJobs(prev => [draftToRemove.job, ...prev]);
+      setDraftJobs(prev => prev.filter(d => d.job.id !== jobId));
+    }
   };
 
-  const renderApplied = () => (
-    <div className="space-y-6 animate-fadeIn">
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">Applied Jobs</h2>
-        <p className="text-sm text-slate-500">Track all your successful submissions.</p>
-      </div>
+  const finalizeApplication = async (userAnswers?: Record<string, string>) => {
+    if (!selectedJob || !applicationData) return;
+    try {
+      setStatus(AppStatus.SUBMITTING_TO_PLATFORM);
+      await new Promise(r => setTimeout(r, 3000));
 
-      <div className="grid grid-cols-1 gap-4">
-        {appliedJobs.length === 0 ? (
-          <div className="bg-white border border-slate-100 rounded-2xl p-20 text-center">
-            <div className="text-5xl mb-4 opacity-30">🚀</div>
-            <h3 className="text-lg font-bold text-slate-800">No applications yet</h3>
-            <p className="text-sm text-slate-400 mt-2">Start applying from your pipeline to see them here.</p>
-          </div>
-        ) : (
-          appliedJobs.map((applied, idx) => (
-            <div key={idx} className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between group hover:border-green-200 transition-all">
-              <div className="flex gap-4">
-                <div className="w-12 h-12 bg-green-50 text-green-600 rounded-lg flex items-center justify-center font-black text-xl">
-                  {applied.job.company[0]}
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900">{applied.job.title}</h4>
-                  <p className="text-xs text-slate-500">{applied.job.company} • Applied on {applied.appliedDate}</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setViewingPackage(applied)}
-                className="px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                View Details
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+      const newAppliedJob: AppliedJob = {
+        job: selectedJob,
+        application: applicationData,
+        appliedDate: new Date().toLocaleDateString(),
+        userAnswers,
+        syncStatus: 'Synced',
+        platformRefId: `REF-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+      };
 
-  const renderArchive = () => (
-    <div className="space-y-6 animate-fadeIn">
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">Draft Materials</h2>
-        <p className="text-sm text-slate-500">Sessions interrupted or saved for later review.</p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4">
-        {draftJobs.length === 0 ? (
-          <div className="bg-white border border-slate-100 rounded-2xl p-20 text-center">
-            <div className="text-5xl mb-4 opacity-30">📂</div>
-            <h3 className="text-lg font-bold text-slate-800">No drafts found</h3>
-            <p className="text-sm text-slate-400 mt-2">If you close an application before finishing, it will save here.</p>
-          </div>
-        ) : (
-          draftJobs.map((draft, idx) => (
-            <div key={idx} className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between group hover:border-blue-200 transition-all">
-              <div className="flex gap-4">
-                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-black text-xl">
-                  {draft.job.company[0]}
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900">{draft.job.title}</h4>
-                  <p className="text-xs text-slate-500">{draft.job.company} • Drafted on {draft.appliedDate}</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => handleCancelDraft(draft.job.id)}
-                  className="px-4 py-2 text-xs font-bold text-slate-400 bg-slate-50 rounded-lg hover:bg-red-50 hover:text-red-500 transition-all"
-                >
-                  Cancel Draft
-                </button>
-                <button 
-                  onClick={() => {
-                    setSelectedJob(draft.job);
-                    setApplicationData(draft.application);
-                  }}
-                  className="px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  Continue Application
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+      setAppliedJobs(prev => [...prev, newAppliedJob]);
+      setJobs(prev => prev.filter(j => j.id !== selectedJob.id));
+      setDraftJobs(prev => prev.filter(d => d.job.id !== selectedJob.id));
+      setSelectedJob(null);
+      setApplicationData(null);
+      setStatus(AppStatus.READY);
+      setNotification({ message: `Applied to ${selectedJob.company}!`, type: 'success' });
+      setTimeout(() => setNotification(null), 5000);
+    } catch (error) {
+      handleApiError(error);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-      <Header currentView={currentView} onViewChange={setCurrentView} />
+    <div className="min-h-screen relative pb-20">
+      <Background />
+      <Header currentView={currentView} onViewChange={setCurrentView} draftCount={draftJobs.length} />
       
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        {currentView === 'dashboard' && renderDashboard()}
-        {currentView === 'active' && renderActiveSearch()}
-        {currentView === 'applied' && renderApplied()}
-        {currentView === 'archive' && renderArchive()}
+      {notification && (
+        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-fadeIn border ${
+          notification.type === 'error' ? 'bg-red-900 text-white border-red-700' : 
+          notification.type === 'info' ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-900 text-white border-slate-700'
+        }`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            notification.type === 'success' ? 'bg-green-500' : 
+            notification.type === 'info' ? 'bg-indigo-500' : 'bg-blue-500'
+          }`}>
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <p className="text-sm font-bold">{notification.message}</p>
+        </div>
+      )}
+
+      <main className="max-w-7xl mx-auto px-6 mt-8">
+        {currentView === 'dashboard' && (
+          <div className="space-y-10 animate-fadeIn">
+             <section className="bg-white/80 backdrop-blur-md rounded-[2.5rem] shadow-xl border border-white p-12 overflow-hidden relative">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-10">
+                 <div className="space-y-8">
+                   <h2 className="text-5xl lg:text-6xl font-black text-slate-900 leading-[1.1] tracking-tight">Your Autonomous <br/><span className="text-blue-600 underline decoration-blue-100 underline-offset-8">Career Pilot.</span></h2>
+                   <p className="text-slate-500 text-xl max-w-lg font-medium">Scans LinkedIn and Naukri strictly for your experience level. Upload your resume to begin.</p>
+                   
+                   <div className="space-y-6">
+                     <div className="relative group">
+                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Target Hub</label>
+                       <select value={cityPref} onChange={e => setCityPref(e.target.value)} className="w-full px-6 py-5 bg-white border border-slate-200 rounded-2xl shadow-sm font-bold appearance-none cursor-pointer focus:ring-2 focus:ring-blue-400 transition-all outline-none">
+                         {IT_HUBS.map(h => <option key={h} value={h}>{h}</option>)}
+                       </select>
+                       <div className="absolute right-6 bottom-5 pointer-events-none text-slate-400">
+                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7"/></svg>
+                       </div>
+                     </div>
+
+                     <div onClick={() => fileInputRef.current?.click()} className="group border-2 border-dashed border-slate-200 rounded-[2rem] p-10 text-center cursor-pointer hover:bg-white hover:border-blue-400 transition-all bg-slate-50/30">
+                       <input type="file" ref={fileInputRef} hidden onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
+                       <div className="w-16 h-16 bg-white rounded-2xl mx-auto mb-4 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors shadow-sm">
+                          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                       </div>
+                       <p className="font-black text-slate-600 text-lg">{resumeData ? resumeData.fileName : 'Upload CV / Resume'}</p>
+                       <p className="text-slate-400 text-xs mt-1">DOCX or PDF</p>
+                     </div>
+                     
+                     <button onClick={handleOnboard} disabled={status === AppStatus.LOADING_PROFILE || !resumeData} className="group w-full py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-3">
+                       {status === AppStatus.LOADING_PROFILE ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            {loadingStep}
+                          </>
+                       ) : (
+                          <>
+                            Initialize Profile
+                            <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                          </>
+                       )}
+                     </button>
+                   </div>
+                 </div>
+                 <div className="hidden lg:block">
+                   <div className="bg-slate-950 rounded-[3rem] p-12 text-white min-h-[500px] flex flex-col justify-between relative overflow-hidden shadow-2xl border border-slate-800">
+                     <div>
+                        <div className="flex gap-4 items-center mb-8">
+                          <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                        </div>
+                        <div className="space-y-4 font-mono text-sm text-blue-300 opacity-60">
+                           <p>$ hireai --ready</p>
+                           <p>... scanning LinkedIn & Naukri</p>
+                           <p>... filtering: {profile?.totalYearsOfExperience || 'Calculating'} yrs</p>
+                           <p>... fetching market salaries (INR)</p>
+                        </div>
+                     </div>
+                     <div className="relative z-10 mt-auto">
+                       <div className="w-16 h-16 bg-blue-600 rounded-2xl mb-8 flex items-center justify-center shadow-lg shadow-blue-500/50">
+                         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                       </div>
+                       <h3 className="text-4xl font-black mb-4">Precision Match</h3>
+                       <p className="text-slate-400 text-lg leading-relaxed max-w-sm">Strictly verified listings from the top 2 platforms in India.</p>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             </section>
+             
+             {profile && (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 animate-fadeIn">
+                  <ProfileCard profile={profile} />
+                  <div className="lg:col-span-3 bg-white/80 rounded-[2.5rem] p-12 flex flex-col items-center justify-center border border-white shadow-xl backdrop-blur-md">
+                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
+                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                    <h3 className="text-3xl font-black mb-2 text-slate-900">Agent Ready</h3>
+                    <p className="text-slate-500 mb-10 text-lg">Searching LinkedIn & Naukri for <strong>{profile.totalYearsOfExperience} year</strong> roles.</p>
+                    <button 
+                      onClick={handleSearchJobs} 
+                      disabled={status === AppStatus.SEARCHING_JOBS}
+                      className="group relative px-16 py-6 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-4 overflow-hidden disabled:opacity-50"
+                    >
+                      {status === AppStatus.SEARCHING_JOBS ? (
+                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <>
+                          <span className="relative z-10">Start Job Hunting</span>
+                          <svg className="w-6 h-6 relative z-10 group-hover:translate-x-2 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                        </>
+                      )}
+                      <div className="absolute inset-0 bg-blue-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                    </button>
+                  </div>
+                </div>
+             )}
+          </div>
+        )}
+
+        {currentView === 'active' && (
+           <div className="animate-fadeIn space-y-8">
+             <div className="flex justify-between items-end">
+               <div>
+                  <h2 className="text-4xl font-black text-slate-900">Recommended Feed</h2>
+                  <p className="text-slate-400 font-medium mt-1">Verified LinkedIn & Naukri matches</p>
+               </div>
+               <button onClick={handleSearchJobs} disabled={status === AppStatus.SEARCHING_JOBS} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50">
+                  <svg className={`w-7 h-7 text-blue-600 ${status === AppStatus.SEARCHING_JOBS ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+               </button>
+             </div>
+             
+             {status === AppStatus.SEARCHING_JOBS ? (
+               <div className="py-40 flex flex-col items-center">
+                 <div className="relative w-24 h-24 mb-10">
+                    <div className="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+                    <div className="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                 </div>
+                 <h3 className="text-3xl font-black text-slate-900 mb-2">{loadingStep}</h3>
+                 <p className="text-slate-500 font-medium">This usually takes about 10 seconds...</p>
+               </div>
+             ) : (
+               <div className="grid grid-cols-1 gap-8">
+                 {jobs.length === 0 ? (
+                    <div className="py-24 bg-white/40 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center">
+                       <p className="text-xl font-bold text-slate-400">No matches found. Try refreshing or a different location.</p>
+                    </div>
+                 ) : (
+                    jobs.map(job => (
+                       <JobCard 
+                         key={job.id} 
+                         job={job} 
+                         onApply={() => startApplication(job)} 
+                         isApplied={appliedJobs.some(a => a.job.id === job.id)} 
+                       />
+                    ))
+                 )}
+               </div>
+             )}
+           </div>
+        )}
+
+        {currentView === 'drafts' && (
+          <div className="animate-fadeIn space-y-8">
+            <h2 className="text-4xl font-black text-slate-900">Saved Drafts</h2>
+            {draftJobs.length === 0 ? (
+              <div className="py-40 flex flex-col items-center justify-center bg-white/60 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
+                <p className="text-2xl font-bold text-slate-400">Drafts folder is empty</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-8">
+                {draftJobs.map((draft, idx) => (
+                  <JobCard 
+                    key={idx} 
+                    job={draft.job} 
+                    onApply={() => startApplication(draft.job)} 
+                    isApplied={false} 
+                    showDraftActions={true}
+                    onNotInterested={() => handleRemoveDraft(draft.job.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {currentView === 'applied' && (
+          <div className="animate-fadeIn space-y-8">
+            <h2 className="text-4xl font-black text-slate-900">Application History</h2>
+            {appliedJobs.length === 0 ? (
+              <div className="py-40 flex flex-col items-center justify-center bg-white/60 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
+                <p className="text-2xl font-bold text-slate-400">No applications sent yet</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {appliedJobs.map((app, idx) => (
+                  <div key={idx} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl flex flex-col gap-6">
+                    <div className="flex justify-between items-start">
+                      <div className="flex gap-5">
+                        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-3xl font-black text-blue-400">
+                          {app.job.company[0]}
+                        </div>
+                        <div>
+                          <h4 className="text-2xl font-black text-slate-900">{app.job.title}</h4>
+                          <p className="text-base font-bold text-slate-400">{app.job.company} • {app.appliedDate}</p>
+                        </div>
+                      </div>
+                      <span className="px-4 py-2 bg-green-50 text-green-600 text-[10px] font-black uppercase rounded-xl border border-green-100 flex items-center gap-2">
+                        {app.syncStatus}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
-      {(selectedJob || viewingPackage) && (
+      {selectedJob && (
         <ApplicationModal 
-          job={selectedJob || viewingPackage!.job} 
+          job={selectedJob} 
           isLoading={status === AppStatus.APPLYING}
-          applicationData={selectedJob ? applicationData : (viewingPackage?.application || null)}
-          onClose={handleCloseModal}
+          isSubmitting={status === AppStatus.SUBMITTING_TO_PLATFORM || status === AppStatus.SAVING_DRAFT}
+          loadingStep={loadingStep}
+          applicationData={applicationData}
+          onClose={() => { setSelectedJob(null); setApplicationData(null); }}
           onFinish={finalizeApplication}
-          isReadOnly={!!viewingPackage}
+          onSaveDraft={handleSaveDraft}
+          initialAnswers={draftJobs.find(d => d.job.id === selectedJob.id)?.partialAnswers}
         />
       )}
     </div>

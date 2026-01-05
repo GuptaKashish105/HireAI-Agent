@@ -1,13 +1,14 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserProfile, Job, ApplicationPackage } from "../types";
 
 /**
- * Analyzes resume content. 
+ * Analyzes resume content for high-fidelity profile extraction.
  */
 export const analyzeResume = async (content: string, isPdf: boolean = false): Promise<UserProfile> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const parts: any[] = [
-    { text: "Extract detailed professional information from the following resume. Be precise and literal." }
+    { text: "Fast extract professional info. Calculate total years of experience as an integer. Format: name, headline, summary, skills, experience." }
   ];
 
   if (isPdf) {
@@ -25,14 +26,15 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
     model: "gemini-3-flash-preview",
     contents: { parts },
     config: {
-      responseMimeType: "application/json",
       thinkingConfig: { thinkingBudget: 0 },
+      responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
           name: { type: Type.STRING },
           headline: { type: Type.STRING },
           summary: { type: Type.STRING },
+          totalYearsOfExperience: { type: Type.NUMBER },
           skills: { type: Type.ARRAY, items: { type: Type.STRING } },
           experience: {
             type: Type.ARRAY,
@@ -56,34 +58,35 @@ export const analyzeResume = async (content: string, isPdf: boolean = false): Pr
 };
 
 /**
- * Searches LinkedIn and other platforms for detailed job listings.
+ * Fast job sourcing strictly for LinkedIn and Naukri with salary estimation.
  */
 export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  const prompt = `Act as a high-precision job sourcing agent specialized in the Indian job market. 
-    Search extensively across LinkedIn India, Naukri.com, Indeed India, and major company career portals.
-    Find 20+ currently open jobs that match this candidate's profile.
-    
-    CANDIDATE:
-    - Name: ${profile.name}
-    - Headline: ${profile.headline}
-    - Key Skills: ${profile.skills.join(', ')}
-    
-    FOR EACH JOB, EXTRACT:
-    1. Title, Company, Location.
-    2. A brief 2-sentence summary.
-    3. Exactly 4 key responsibilities.
-    4. Exactly 4 key requirements.
-    5. Estimated salary IN INDIAN RUPEES (INR) using the ₹ symbol. Preferred format is Lakhs per Annum (e.g., ₹15L - ₹25L). If the listing is in USD, convert using 1 USD = 83 INR.
-    6. A match score (0-100) based on technical alignment.`;
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const city = profile.preferredCity || "India";
+  const exp = profile.totalYearsOfExperience || 0;
 
-  const response = await ai.models.generateContent({
+  // Phase 1: High-speed targeted search
+  const searchResult = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: prompt,
+    contents: `Find 8 active jobs for "${profile.headline}" in ${city}.
+    STRICT PLATFORM FILTER: ONLY search LinkedIn (site:linkedin.com/jobs) and Naukri (site:naukri.com). EXCLUDE Indeed and others.
+    STRICT EXP FILTER: Target exactly ${exp} years.
+    MANDATORY SALARY: Extract or ESTIMATE a realistic salary in INR (e.g. ₹15L - ₹25L PA). DO NOT return "Not Disclosed".`,
+    config: { 
+      tools: [{ googleSearch: {} }] 
+    }
+  });
+
+  const rawText = searchResult.text;
+
+  // Phase 2: Instant JSON Formatting (No reasoning to reduce latency)
+  const structuredResult = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Convert to JSON array. Ensure 'salary' is ALWAYS a specific INR range (e.g. ₹12L - ₹18L PA).
+    Data: ${rawText}`,
     config: {
-      tools: [{ googleSearch: {} }],
+      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 1024 },
       responseSchema: {
         type: Type.ARRAY,
         items: {
@@ -93,40 +96,41 @@ export const findMatchingJobs = async (profile: UserProfile): Promise<Job[]> => 
             title: { type: Type.STRING },
             company: { type: Type.STRING },
             location: { type: Type.STRING },
-            description: { type: Type.STRING, description: "Brief summary of the role" },
+            platform: { type: Type.STRING },
+            description: { type: Type.STRING },
             url: { type: Type.STRING },
             matchScore: { type: Type.NUMBER },
             matchReason: { type: Type.STRING },
             responsibilities: { type: Type.ARRAY, items: { type: Type.STRING } },
             requirements: { type: Type.ARRAY, items: { type: Type.STRING } },
+            skillsRequired: { type: Type.ARRAY, items: { type: Type.STRING } },
+            experienceRequired: { type: Type.STRING },
             salary: { type: Type.STRING }
           },
-          required: ["id", "title", "company", "location", "description", "url", "matchScore", "matchReason", "responsibilities", "requirements"]
+          required: ["title", "company", "url", "salary", "platform"]
         }
       }
     }
   });
 
-  return JSON.parse(response.text || '[]') as Job[];
+  const jobs = JSON.parse(structuredResult.text || '[]') as Job[];
+  return jobs.map(j => ({
+    ...j,
+    id: j.id || Math.random().toString(36).substr(2, 9)
+  }));
 };
 
 /**
- * Generates application materials and identifies missing info.
+ * Generates application materials.
  */
 export const generateApplication = async (profile: UserProfile, job: Job): Promise<ApplicationPackage> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  const prompt = `Generate a tailored application package for ${profile.name} for the role of ${job.title} at ${job.company}. 
-    In addition, identify if there are any specific questions this company usually asks for this type of role that aren't in the profile (e.g. 'Years of experience with Kubernetes', 'Willingness to travel').
-    
-    JOB DETAILS: ${JSON.stringify(job)}
-    USER PROFILE: ${JSON.stringify(profile)}`;
-
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: prompt,
+    contents: `Tailor application for ${job.title} at ${job.company} for ${profile.name}.`,
     config: {
+      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 1024 },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -135,19 +139,10 @@ export const generateApplication = async (profile: UserProfile, job: Job): Promi
           resumeTailoringTips: { type: Type.ARRAY, items: { type: Type.STRING } },
           suggestedAnswers: { 
             type: Type.OBJECT,
-            properties: {
-              why_us: { type: Type.STRING },
-              relevant_experience: { type: Type.STRING },
-              salary_expectations: { type: Type.STRING }
-            }
+            properties: { why_us: { type: Type.STRING }, relevant_experience: { type: Type.STRING } }
           },
-          requiredAdditionalInfo: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING },
-            description: "2-3 specific questions for the user to answer to improve the application."
-          }
-        },
-        required: ["jobId", "coverLetter", "resumeTailoringTips", "suggestedAnswers", "requiredAdditionalInfo"]
+          requiredAdditionalInfo: { type: Type.ARRAY, items: { type: Type.STRING } }
+        }
       }
     }
   });

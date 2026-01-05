@@ -5,7 +5,10 @@ export interface UserProfile {
   summary: string;
   skills: string[];
   experience: Experience[];
+  totalYearsOfExperience?: number;
   url: string;
+  preferredCity?: string;
+  email?: string;
 }
 
 export interface Experience {
@@ -20,13 +23,18 @@ export interface Job {
   title: string;
   company: string;
   location: string;
+  platform: string;
   description: string;
+  fullJD?: string;
   url: string;
-  matchScore: number;
+  matchScore: number; // 0-100
   matchReason: string;
   responsibilities: string[];
   requirements: string[];
-  salary?: string;
+  skillsRequired: string[];
+  experienceRequired: string;
+  salary: string; // Target INR
+  postedDate?: string;
 }
 
 export interface AppliedJob {
@@ -34,6 +42,14 @@ export interface AppliedJob {
   application: ApplicationPackage;
   appliedDate: string;
   userAnswers?: Record<string, string>;
+  syncStatus: 'Synced' | 'Pending' | 'Recruiter Viewed' | 'Action Required';
+  platformRefId?: string;
+}
+
+export interface DraftJob {
+  job: Job;
+  savedDate: string;
+  partialAnswers?: Record<string, string>;
 }
 
 export interface ApplicationPackage {
@@ -41,7 +57,7 @@ export interface ApplicationPackage {
   coverLetter: string;
   resumeTailoringTips: string[];
   suggestedAnswers: Record<string, string>;
-  requiredAdditionalInfo: string[]; // Questions the model thinks the user should answer
+  requiredAdditionalInfo: string[]; 
 }
 
 export enum AppStatus {
@@ -49,7 +65,15 @@ export enum AppStatus {
   LOADING_PROFILE = 'LOADING_PROFILE',
   SEARCHING_JOBS = 'SEARCHING_JOBS',
   APPLYING = 'APPLYING',
+  SUBMITTING_TO_PLATFORM = 'SUBMITTING_TO_PLATFORM',
+  SAVING_DRAFT = 'SAVING_DRAFT',
   READY = 'READY'
 }
 
-export type View = 'dashboard' | 'active' | 'applied' | 'archive';
+export type View = 'dashboard' | 'active' | 'applied' | 'drafts';
+
+export interface PlatformConnection {
+  name: 'LinkedIn' | 'Naukri';
+  connected: boolean;
+  lastSync?: string;
+}
